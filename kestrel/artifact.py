@@ -25,7 +25,7 @@ FRONTEND = ROOT / "frontend"
 RUNS_DIR = ROOT / "runs"
 DEFAULT_OUT = ROOT / "artifacts" / "kestrel-demo.html"
 DEFAULT_YEAR_RUN = RUNS_DIR / "full_year" / "rule" / "run.json"
-FINDINGS_PATH = ROOT / "docs" / "model-findings.md"
+FINDINGS_PATH = ROOT / "docs" / "findings-summary.html"  # short hand-written summary; full evidence in model-findings.md
 
 YEAR_SEED = 1
 YEAR_DAYS = 361
@@ -340,13 +340,8 @@ def compact_run(run: dict, checkpoint_every: int = TASK_CHECKPOINT_EVERY) -> dic
     return out
 
 
-# -- markdown-ish findings doc: <pre>, no library ----------------------------
-
 def _findings_html(path: Path = FINDINGS_PATH) -> str | None:
-    if not path.is_file():
-        return None
-    import html
-    return f"<pre>{html.escape(path.read_text())}</pre>"
+    return path.read_text() if path.is_file() else None
 
 
 # -- hydration script: expands {id, state} references back to full record views --

@@ -246,7 +246,7 @@ function togglePlay() {
     if (state.frameIndex >= state.frames.length - 1) { stopPlaying(); return; }
     state.frameIndex += 1;
     render();
-  }, 700);
+  }, Number($("speed-select").value));
 }
 
 // -- rendering ----------------------------------------------------------------
@@ -304,7 +304,10 @@ function renderScrubControls() {
   slider.value = state.frameIndex;
   slider.disabled = state.frames.length <= 1;
   $("play-btn").disabled = state.frames.length <= 1;
-  $("frame-position").textContent = state.frames.length ? `${state.frameIndex + 1} / ${state.frames.length}` : "0 / 0";
+  $("prev-btn").disabled = state.frameIndex <= 0;
+  $("next-btn").disabled = state.frameIndex >= state.frames.length - 1;
+  const f = currentFrame();
+  $("frame-position").textContent = f ? `Day ${f.day} of ${state.frames.length} — ${f.date}` : "No run loaded";
 }
 
 function fmtMoney(n) { return "€" + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
@@ -707,10 +710,13 @@ function init() {
   $("play-btn").addEventListener("click", togglePlay);
 
   $("error-dismiss").addEventListener("click", () => { $("error-banner").hidden = true; });
-  $("about-btn").addEventListener("click", () => { $("about-panel").hidden = false; });
-  $("about-close").addEventListener("click", () => { $("about-panel").hidden = true; });
-  $("findings-btn").addEventListener("click", () => { $("findings-panel").hidden = false; });
-  $("findings-close").addEventListener("click", () => { $("findings-panel").hidden = true; });
+  $("about-btn").addEventListener("click", () => $("about-panel").showModal());
+  $("about-close").addEventListener("click", () => $("about-panel").close());
+  $("findings-btn").addEventListener("click", () => $("findings-panel").showModal());
+  $("findings-close").addEventListener("click", () => $("findings-panel").close());
+  $("prev-btn").addEventListener("click", () => { stopPlaying(); if (state.frameIndex > 0) { state.frameIndex -= 1; render(); } });
+  $("next-btn").addEventListener("click", () => { stopPlaying(); if (state.frameIndex < state.frames.length - 1) { state.frameIndex += 1; render(); } });
+  $("speed-select").addEventListener("change", () => { if (state.playing) { stopPlaying(); togglePlay(); } });
 
   if (Array.isArray(window.KESTREL_RUNS)) initOfflineMode();
   else wireLiveControls();

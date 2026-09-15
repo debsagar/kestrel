@@ -1,0 +1,31 @@
+<p>Five disruption scenarios, each played by GPT-5.6 Luna through tool calls and by a rule-based planner from the same starting point with the same hidden events. Ten runs, all complete. Pick a run above to step through it day by day. The full evidence, with the day, the tool call and the engine's reply for every item, is in <code>docs/model-findings.md</code> in the repository.</p>
+
+<h3>Results per scenario</h3>
+<table>
+<tr><th>Scenario</th><th>Days</th><th>Model result</th><th>Rule result</th><th>Late / short deliveries</th></tr>
+<tr><td>Red Sea diversion</td><td>45</td><td>€1,857,757</td><td>€1,804,464</td><td>chargebacks €3,146 vs €415</td></tr>
+<tr><td>Chinese New Year pre-build</td><td>60</td><td>€2,521,267</td><td>€2,795,933</td><td>20 / 33 vs 10 / 22</td></tr>
+<tr><td>Chip supplier insolvency</td><td>45</td><td>€4,184,384</td><td>€4,680,317</td><td>43 / 74 vs 25 / 31</td></tr>
+<tr><td>Black Friday</td><td>45</td><td>€14,828,172</td><td>€14,838,529</td><td>27 / 25 vs 27 / 25</td></tr>
+<tr><td>Invoice mismatch</td><td>45</td><td>€1,701,625</td><td>€1,788,966</td><td>27 / 44 vs 1 / 15</td></tr>
+</table>
+<p>"Result" is the operating result at the end of the run. The rule planner is a plain heuristic, not an optimum.</p>
+
+<h3>Where the model went wrong</h3>
+<ul>
+<li><b>Capacity blindness.</b> On day one of the Red Sea run it released work orders for 35,000 units against a plant that makes 4,000 a day, using up most of the component stock in one move. It did the same at the start of the CNY run.</li>
+<li><b>No replenishment.</b> In the 60-day CNY scenario it placed no purchase orders at all, although its briefing named the shutdown. The rule planner placed 37.</li>
+<li><b>Ignoring what was on the screen.</b> It re-expedited orders already marked expedited, tried to buy from a supplier the briefing marked as unqualified, and allocated quantities the inventory screen showed were not there.</li>
+<li><b>Fighting the engine.</b> Manual allocations collided with the daily automatic allocation; one carried a quantity that contradicted itself.</li>
+<li><b>No freight.</b> In the final invoice-mismatch run it never booked a container in 45 days. Late and short deliveries went from 1 and 15 (rule) to 27 and 44.</li>
+</ul>
+
+<h3>What it did well</h3>
+<ul>
+<li>Read the Cape diversion notice on the day it appeared and adjusted.</li>
+<li>Reacted quickly and correctly when the chip supplier went insolvent.</li>
+<li>Disputed the over-billed invoice the day it became visible.</li>
+</ul>
+
+<h3>What the runs found in the simulator</h3>
+<p>Four bugs: two document types never closed, so the records screen grew without bound; the evidence summary was not saved with the run; and two scenario events could silently fail to fire for a player who had not yet created the document they targeted. All four are fixed. The affected scenario was re-run and the earlier runs are kept under a revision suffix.</p>

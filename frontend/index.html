@@ -20,7 +20,7 @@
     <button id="llm-day-btn" disabled>Real LLM day</button>
   </div>
   <div class="header-controls" id="replay-controls">
-    <label for="run-select">Replay run</label>
+    <label for="run-select">Run</label>
     <select id="run-select"><option value="">Live session</option></select>
     <button id="refresh-runs-btn">Refresh</button>
   </div>
@@ -41,8 +41,8 @@
   <button id="error-dismiss">Dismiss</button>
 </div>
 
-<div id="about-panel" class="panel about" hidden>
-  <h2>About this desk</h2>
+<dialog id="about-panel" class="sheet">
+  <div class="sheet-bar"><button id="about-close">&larr; Back to desk</button><h2>About this desk</h2></div>
   <p>Kestrel is a simulated six-factor supply chain (procurement, logistics, plant, distribution,
      fulfilment, finance) for one audio-goods company. Every screen shown here is the same public,
      partial-information view an operator or an LLM player receives -- true supplier health, exact
@@ -60,13 +60,31 @@
     <li>Exception severity stripes (high/medium/low) are a display-only grouping of the engine's
       exception <code>kind</code> field for scanability; the engine itself has no severity concept.</li>
   </ul>
-  <button id="about-close">Close</button>
-</div>
+</dialog>
 
-<div id="findings-panel" class="panel about" hidden>
-  <h2>Findings</h2>
+<dialog id="findings-panel" class="sheet">
+  <div class="sheet-bar"><button id="findings-close">&larr; Back to desk</button><h2>Findings</h2></div>
   <div id="findings-content"></div>
-  <button id="findings-close">Close</button>
+</dialog>
+
+<div class="panel" id="scrub-panel">
+  <div class="panel-row">
+    <div class="header-controls">
+      <button id="prev-btn" disabled>&larr; Day</button>
+      <button id="play-btn" disabled>Play</button>
+      <button id="next-btn" disabled>Day &rarr;</button>
+      <label for="speed-select">Speed</label>
+      <select id="speed-select">
+        <option value="4000">Slow</option>
+        <option value="2000" selected>Normal</option>
+        <option value="800">Fast</option>
+      </select>
+    </div>
+    <span id="frame-position" class="day-label"></span>
+  </div>
+  <div class="scrub-row">
+    <input id="scrub-slider" type="range" min="0" max="0" value="0" disabled>
+  </div>
 </div>
 
 <div class="kpi-strip" id="kpi-strip"></div>
@@ -120,17 +138,5 @@
   </div>
 </div>
 
-<div class="panel" id="scrub-panel">
-  <div class="panel-row">
-    <h2>History</h2>
-    <div class="header-controls">
-      <button id="play-btn" disabled>Play</button>
-      <span id="frame-position" class="pill"></span>
-    </div>
-  </div>
-  <div class="scrub-row">
-    <input id="scrub-slider" type="range" min="0" max="0" value="0" disabled>
-  </div>
-</div>
 
 <script type="module" src="app.js"></script>
