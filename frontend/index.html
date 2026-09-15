@@ -1,0 +1,136 @@
+<!doctype html>
+<title>Kestrel Ops Desk</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="style.css">
+
+<div class="header">
+  <h1>Kestrel Operations Desk</h1>
+  <span id="mode-badge" class="badge badge-live">LIVE</span>
+  <span id="player-badge" class="badge badge-rule" hidden></span>
+  <div class="spacer"></div>
+  <div class="header-controls" id="live-controls">
+    <label for="seed-input">Seed</label>
+    <input id="seed-input" type="number" value="1" style="width:80px">
+    <button id="new-world-btn">New world</button>
+    <button id="step-day-btn" disabled>Step day</button>
+    <label for="autopilot-days">Autopilot</label>
+    <input id="autopilot-days" type="number" value="5" min="1" style="width:64px" disabled>
+    <button id="autopilot-btn" disabled>Run</button>
+    <button id="llm-day-btn" disabled>Real LLM day</button>
+  </div>
+  <div class="header-controls" id="replay-controls">
+    <label for="run-select">Replay run</label>
+    <select id="run-select"><option value="">Live session</option></select>
+    <button id="refresh-runs-btn">Refresh</button>
+  </div>
+  <div class="header-controls">
+    <label for="theme-select">Theme</label>
+    <select id="theme-select">
+      <option value="system">System</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+    <button id="about-btn">About</button>
+    <button id="findings-btn" hidden>Findings</button>
+  </div>
+</div>
+
+<div id="error-banner" class="error-banner" hidden>
+  <span id="error-text"></span>
+  <button id="error-dismiss">Dismiss</button>
+</div>
+
+<div id="about-panel" class="panel about" hidden>
+  <h2>About this desk</h2>
+  <p>Kestrel is a simulated six-factor supply chain (procurement, logistics, plant, distribution,
+     fulfilment, finance) for one audio-goods company. Every screen shown here is the same public,
+     partial-information view an operator or an LLM player receives -- true supplier health, exact
+     freight-rate regimes, port congestion, and other random-number internals are never exposed;
+     only their downstream effects (confirmed quantities, ship-day slips, lot outcomes, invoice
+     mismatches, booking rolls, demurrage, scorecards) are.</p>
+  <ul>
+    <li><strong>Live</strong> sessions run a fresh in-memory world on this server; nothing here is
+      the recorded benchmark. A live "Real LLM day" calls the same OpenRouter tool-calling loop and
+      writes the same transcript/frame format as the CLI runner, against this session's own world.</li>
+    <li><strong>Replay</strong> loads a previously recorded run (rule planner or the "luna" model
+      player) from disk and steps through its frames exactly as they were captured; nothing is
+      recomputed.</li>
+    <li>The map is a schematic, not a geographic projection: relative positions only.</li>
+    <li>Exception severity stripes (high/medium/low) are a display-only grouping of the engine's
+      exception <code>kind</code> field for scanability; the engine itself has no severity concept.</li>
+  </ul>
+  <button id="about-close">Close</button>
+</div>
+
+<div id="findings-panel" class="panel about" hidden>
+  <h2>Findings</h2>
+  <div id="findings-content"></div>
+  <button id="findings-close">Close</button>
+</div>
+
+<div class="kpi-strip" id="kpi-strip"></div>
+
+<div class="layout">
+  <div class="col">
+    <div class="panel">
+      <div class="panel-row"><h2>Network</h2><span id="day-date" class="pill"></span></div>
+      <div class="map-wrap"><svg id="map" class="map" viewBox="0 0 720 300"></svg></div>
+    </div>
+    <div class="panel">
+      <h2 id="node-title">Node stock</h2>
+      <div id="node-panel" class="inv-grid"></div>
+    </div>
+    <div class="panel">
+      <h2>Exceptions</h2>
+      <div id="exceptions-panel"></div>
+    </div>
+    <div class="panel">
+      <h2>News</h2>
+      <div id="news-panel"></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="panel">
+      <div class="panel-row"><h2>Records</h2>
+        <select id="record-type-select"></select>
+      </div>
+      <div class="records-toolbar" id="records-toolbar"></div>
+      <div class="records-scroll"><table id="records-table"><thead></thead><tbody></tbody></table></div>
+      <div id="record-detail" class="record-detail" hidden></div>
+    </div>
+    <div class="panel" id="action-panel">
+      <div class="panel-row"><h2>Action</h2></div>
+      <form id="actions-form" class="actions-form">
+        <div class="field">
+          <label for="action-type-select">Action type</label>
+          <select id="action-type-select"></select>
+        </div>
+        <div id="action-fields"></div>
+        <div class="form-row">
+          <button type="submit" class="primary" id="submit-action-btn">Submit action</button>
+        </div>
+      </form>
+      <div id="action-result"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-row"><h2 id="note-title">Planner note</h2></div>
+      <div id="note-box" class="note-box">No day recorded yet.</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="scrub-panel">
+  <div class="panel-row">
+    <h2>History</h2>
+    <div class="header-controls">
+      <button id="play-btn" disabled>Play</button>
+      <span id="frame-position" class="pill"></span>
+    </div>
+  </div>
+  <div class="scrub-row">
+    <input id="scrub-slider" type="range" min="0" max="0" value="0" disabled>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>

@@ -1,0 +1,276 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Kestrel Audio — design brief</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.55 -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+         max-width: 880px; margin: 0 auto; padding: 24px 20px 80px; background: #fff; color: #1a1a1a; }
+  @media (prefers-color-scheme: dark) { body { background: #16181c; color: #e6e6e6; } a { color: #7db8ff; }
+    code, pre, table, .box { background: #22252b; border-color: #3a3d44 !important; } th { background: #2a2d33 !important; } }
+  h1 { font-size: 1.7rem; margin-bottom: 2px; }
+  h2 { font-size: 1.25rem; margin-top: 2.2em; border-bottom: 2px solid #d8d8d8; padding-bottom: 4px; }
+  h3 { font-size: 1.02rem; margin-top: 1.4em; }
+  .subtitle { color: #666; margin-top: 0; }
+  code { background: #f0f0f0; padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+  pre { background: #f5f5f5; padding: 10px 12px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 0.92em; }
+  th, td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f2f2f2; }
+  .box { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 1em 0; background: #fafafa; }
+  .fictional { border-left: 4px solid #c96; }
+  .exclude { border-left: 4px solid #999; }
+  .journey-step { margin: 6px 0; padding-left: 10px; border-left: 3px solid #8ab; }
+  .src { font-size: 0.85em; color: #666; }
+  ul.compact li { margin: 3px 0; }
+  .todo { color: #b45; font-style: italic; }
+  footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid #ddd; color: #777; font-size: 0.85em; }
+</style>
+
+<h1>Kestrel Audio — how the simulator works</h1>
+<p class="subtitle">A plain-English brief for reviewing what "Kestrel" actually models, with real
+record IDs pulled from a recorded run. Every number below is quoted from a run file, from
+<code>kestrel/network.py</code>, or from a research note with its source link — none are
+recalled from memory. Regenerate this alongside the demo artifact; see
+<a href="../README.md">README.md</a> for the command.</p>
+
+<h2>1. What Kestrel Audio is, and the network it runs on</h2>
+<p>Kestrel Audio is a <strong>fictional</strong> mid-size consumer-electronics brand: earbuds
+and a portable speaker, assembled in China from imported components and sold into Europe
+through three regional distribution centers. The whole company — its name, suppliers,
+customers, prices, and every business rule — is invented for this simulator, deliberately
+built to <em>look and behave like</em> a real importer/distributor's operation (the mechanisms
+below are source-backed), without claiming to reproduce any real company's actual contracts,
+suppliers, or numbers.</p>
+
+<p><strong>Products</strong> (from <code>kestrel/network.py::PRODUCTS</code>):</p>
+<table>
+<tr><th>SKU</th><th>Name</th><th>Price</th><th>ABC class</th><th>Bill of materials</th></tr>
+<tr><td><code>EB-STD</code></td><td>Standard earbuds</td><td>€49.00</td><td>A</td><td>1 BAT, 1 SOC, 2 DRV, 1 CASE, 1 CHG, 1 PKG</td></tr>
+<tr><td><code>EB-PRO</code></td><td>Pro earbuds</td><td>€119.00</td><td>A</td><td>same BOM as EB-STD</td></tr>
+<tr><td><code>SPK-1</code></td><td>Portable speaker</td><td>€89.00</td><td>B</td><td>2 BAT, 1 SOC, 1 DRV, 1 CASE, 1 PKG</td></tr>
+</table>
+
+<p><strong>Suppliers</strong> (one per component, plus a second, unqualified backup SoC source):</p>
+<table>
+<tr><th>ID</th><th>Location</th><th>Component(s)</th><th>Road days to plant</th><th>Qualified</th></tr>
+<tr><td><code>S-BAT</code></td><td>Dongguan</td><td>BAT (battery)</td><td>1</td><td>yes</td></tr>
+<tr><td><code>S-SOC</code></td><td>Shenzhen</td><td>SOC (audio chip)</td><td>1</td><td>yes</td></tr>
+<tr><td><code>S-BRK</code></td><td>Hong Kong</td><td>SOC — backup, MOQ 500, no price break</td><td>2</td><td><strong>no</strong> — must be signed off via <code>qualify_supplier</code></td></tr>
+<tr><td><code>S-DRV</code></td><td>Haiphong</td><td>DRV (driver)</td><td>3</td><td>yes</td></tr>
+<tr><td><code>S-CASE</code></td><td>Dongguan</td><td>CASE, CHG, PKG</td><td>1</td><td>yes</td></tr>
+</table>
+
+<p><strong>Network nodes</strong>: one <code>PLANT</code> (assembly, Dongguan) feeding
+<code>DC-NL</code> (Rotterdam, the only ocean/air gateway) by ocean (Suez ~30-day mean transit,
+Cape ~42-day mean, both with a standard deviation modelling schedule variance) or air/sea-air;
+<code>DC-NL</code> then feeds <code>DC-DE</code> and <code>DC-PL</code> by rail or truck
+(1-3 days), with a direct DC-DE↔DC-PL truck lane for rebalancing. Four customers hang off
+the DCs: <code>C-BIGBOX</code> (35% share, DC-DE, 3%-of-order-value late/short penalty),
+<code>C-MARKET</code> (30%, DC-DE, tiered ASN-accuracy-style penalty), <code>C-PLCHAIN</code>
+(20%, DC-PL, a flat 2%-of-order-value late-delivery penalty), <code>C-WEB</code> (15%,
+DC-DE, no penalty — direct-to-consumer). All three penalty bases are order value, not COGS
+(<code>kestrel/fulfilment.py::_chargeback</code>) — see §7 on why that basis is a Kestrel
+choice, not a reproduction of the real programs that inspired it. Six factors are simulated
+end to end: procurement, logistics, plant (assembly), distribution, fulfilment, and finance.</p>
+
+<h2>2. One order's journey, end to end (real IDs, <code>runs/red_sea/rule/run.json</code>)</h2>
+<p>Kestrel's "order" record is the customer-facing sales order; it is fed from pooled DC
+stock, not tied 1:1 to any single inbound purchase order — exactly like a real distributor's
+DC. To show the full chain honestly, this section traces <em>both</em> halves that meet at
+the DC: the inbound component/assembly journey that builds stock, and a customer order that
+draws on it. They are not the same document chain; the simulator does not claim they are.</p>
+
+<h3>2a. Inbound: PO-0001, a battery purchase order</h3>
+<div class="journey-step"><strong>Day 0 — created, straight to <code>in_production</code></strong>:
+50,000-unit-tier price of €1.50/unit, 74,250 units confirmed, 30% deposit (€33,412.50) paid
+immediately, FOB incoterm, promised day 10.</div>
+<div class="journey-step"><strong>Day 10 — <code>shipped</code></strong> (<code>ASN-0001</code>
+issued): 74,250 units shipped, carrier-estimated arrival day 11.</div>
+<div class="journey-step"><strong>Day 11 — <code>received</code></strong> (<code>GR-0001</code>
+goods receipt).</div>
+<div class="journey-step"><strong>Day 12 — <code>inspected</code></strong> (<code>LOT-0001</code>
+passes incoming sampling).</div>
+<div class="journey-step"><strong>Day 15 — <code>invoiced</code> → <code>matched</code> →
+<code>paid</code></strong> in the same day (<code>INV-0001</code>): balance €77,962.50 paid,
+3-way match against the PO and goods receipt clears automatically.</div>
+
+<h3>2b. Outbound: SO-0117, a speaker order caught by the Red Sea diversion</h3>
+<p>Same run, same 45-day <code>red_sea</code> task. On day 3 a scenario override force-diverts
+the Suez lane; the public news item (visible to both players, day 6) reads:</p>
+<blockquote><em>"Asia-Europe services rerouted via the Cape of Good Hope — Transit times extend
+by 10-14 days on the Cape of Good Hope route; war-risk surcharge applies."</em>
+(<code>kind: "lane"</code>)</blockquote>
+<div class="journey-step"><strong>Day 21 — order <code>SO-0117</code> received</strong>:
+customer <code>C-PLCHAIN</code>, 233 units of <code>SPK-1</code>, requested day 26.</div>
+<div class="journey-step"><strong>Day 28 — <code>allocated</code></strong> (stock only became
+available after the diverted inbound booking finally cleared — 7 days later than requested).</div>
+<div class="journey-step"><strong>Day 29 — <code>shipped</code></strong>, <strong>day 31 —
+<code>delivered</code></strong>: <code>data.late = true</code>, invoice <code>AR-0147</code>
+raised for €20,737.00. <code>C-PLCHAIN</code>'s contract term ("late2") is a flat 2%-of-
+order-value late-delivery penalty — a Kestrel-specific, fictional basis (see §7) — so a
+chargeback fires: <code>CB-0001</code>, created day 31, €414.74 (exactly 2% of €20,737.00).
+This is the <strong>only</strong> chargeback in the entire 45-day run — it is also exactly
+the day-45 P&amp;L chargebacks total quoted in §4.</div>
+
+<h2>3. Record lifecycles</h2>
+<p>Every business document in Kestrel is a <code>Record</code> with an explicit legal
+state machine (<code>kestrel/records.py::LEGAL</code>) — an illegal transition raises
+<code>IllegalTransition</code> rather than silently happening. This is the complete list:</p>
+<table>
+<tr><th>Type</th><th>Prefix</th><th>Legal transitions</th></tr>
+<tr><td><code>po</code></td><td>PO</td><td>draft → confirmed → in_production → shipped → received → inspected → invoiced → matched → paid; cancellable from draft/confirmed/in_production; received/inspected → short_closed</td></tr>
+<tr><td><code>lot</code></td><td>LOT</td><td>sampling → accepted; sampling → rejected → sorted/returned</td></tr>
+<tr><td><code>invoice_in</code></td><td>INV</td><td>open → blocked/accepted; blocked → accepted/disputed; disputed → accepted; accepted → paid</td></tr>
+<tr><td><code>booking</code></td><td>BK</td><td>booked → cut_off → loaded → at_sea → arrived → customs → cleared → delivered; cut_off → rolled → loaded; booked → blanked → cut_off; cancellable from booked/cut_off</td></tr>
+<tr><td><code>contract</code></td><td>FC</td><td>active → expired</td></tr>
+<tr><td><code>work_order</code></td><td>WO</td><td>planned → released → running → complete; cancellable from planned/released</td></tr>
+<tr><td><code>transfer</code></td><td>TR</td><td>created → in_transit → delivered</td></tr>
+<tr><td><code>order</code></td><td>SO</td><td>received → allocated → shipped → delivered; received → declined</td></tr>
+<tr><td><code>invoice_out</code></td><td>AR</td><td>open → paid</td></tr>
+<tr><td><code>chargeback</code></td><td>CB</td><td>open → paid</td></tr>
+<tr><td><code>credit_note</code></td><td>CN</td><td>open → paid</td></tr>
+<tr><td><code>ret</code></td><td>RET</td><td>in_transit → restocked / written_off</td></tr>
+<tr><td><code>qualification</code></td><td>QL</td><td>pending → done</td></tr>
+<tr><td><code>audit</code></td><td>AU</td><td>pending → done</td></tr>
+<tr><td><code>asn</code>, <code>receipt</code></td><td>ASN, GR</td><td>no state machine — created once, evidentiary only</td></tr>
+</table>
+
+<h2>4. How disruptions cascade (the Red Sea example, traced through frames)</h2>
+<ol>
+<li><strong>Exogenous shock (day 3, <code>red_sea</code> task's own override):</strong> the
+Suez lane is forced into a diverted state. This is the only place the task injects anything
+that isn't organic engine dynamics — every other consequence below is the plant/logistics/
+distribution/finance code reacting exactly as it would to a real diversion.</li>
+<li><strong>First observable effect (day 6):</strong> the public "Asia-Europe services
+rerouted..." news item above — the only channel either player has for the cause; there is no
+"lane state" field the players can read directly.</li>
+<li><strong>Bookings roll (days 12, 16, 18):</strong> <code>BK-0004</code> rolled to cutoff
+day 18, <code>BK-0007</code> to day 22, <code>BK-0009</code> to day 24 — each a public
+exception (<code>kind: "booking"</code>) with the booking's own ID and new cutoff day.</li>
+<li><strong>Transit stretches (booking <code>BK-0002</code>):</strong> booked day 3, loaded
+day 11, carrier-estimated arrival day <strong>56</strong> — a 45-day transit versus the
+un-diverted ~30-day Suez mean, consistent with the diversion's stated "extend by 10-14 days"
+plus queueing, and directionally matching the Cape-routing evidence in
+<a href="research/freight-and-ports.md">docs/research/freight-and-ports.md</a> ("Cape of Good
+Hope... total time to 40 to 50 days").</li>
+<li><strong>Stock and order impact:</strong> DC-NL/DC-DE inbound stock arrives later than the
+un-diverted plan; order <code>SO-0117</code> (§2b) waits a week past its requested day for
+allocation and delivers late.</li>
+<li><strong>Financial impact (day-45 P&amp;L, this run):</strong> cash €1,923,449.28; revenue
+€2,790,087.00; freight €-66,975.22; surcharges €-4,000.00; chargebacks €-414.74; demurrage
+€0.00 (the rule planner avoided demurrage entirely in this run — see
+<a href="model-findings.md">docs/model-findings.md</a> for the luna-model comparison, once
+generated).</li>
+</ol>
+
+<h2>5. The decisions the planner (rule-based or model) actually makes</h2>
+<p>Every action below is a real engine boundary call (<code>kestrel/agent/tools.py</code>'s
+<code>ENGINE_TOOLS</code>, mirrored in <code>frontend/app.js</code>'s <code>ACTIONS</code>
+table) — nothing is generated prose:</p>
+<ul class="compact">
+<li><code>create_po</code> / <code>cancel_po</code> / <code>expedite_po</code> — what to
+buy, from whom, how much, and whether to pay an air-freight premium to pull a shipment in.</li>
+<li><code>set_inspection_level</code> (I/II/III) / <code>qualify_supplier</code> /
+<code>request_audit</code> — how hard to sample incoming lots, and whether to bring the
+backup SoC supplier (<code>S-BRK</code>) online or trigger a for-cause supplier audit.</li>
+<li><code>accept_invoice</code> / <code>dispute_invoice</code> — whether an incoming invoice's
+mismatch against its PO is worth disputing.</li>
+<li><code>return_lot</code> — send a rejected incoming lot back rather than sorting it.</li>
+<li><code>book_container</code> (ocean/air/sea_air, Suez or Cape route, spot or contract
+rate) / <code>cancel_booking</code> / <code>sign_freight_contract</code> — how to move
+finished goods from the plant to Rotterdam, and whether to lock in a monthly minimum-volume
+freight contract (only signable 1-15 May, mirroring the May-to-May ocean contract season —
+see §6).</li>
+<li><code>release_work_order</code> / <code>cancel_work_order</code> — what to assemble and
+how much, against the plant's fixed daily capacity.</li>
+<li><code>create_transfer</code> — rebalance finished-goods stock between DCs.</li>
+<li><code>set_allocation_policy</code> / <code>allocate_order</code> / <code>decline_order</code>
+— priority order or fair-share allocation across customers when stock is short, and
+individual order overrides.</li>
+<li><code>markdown</code> — a temporary price cut on a SKU, trading margin for sell-through.</li>
+</ul>
+
+<h2>6. Mechanisms with primary sources</h2>
+<p>See the full source-by-source verification pass at
+<a href="research/2026-09-15-evidence-audit.md">docs/research/2026-09-15-evidence-audit.md</a>
+before taking any number here as more than "directionally grounded." Selected mechanisms:</p>
+<table>
+<tr><th>Mechanism</th><th>Source</th></tr>
+<tr><td>30% deposit / 70% balance-before-shipment payment structure</td>
+<td class="src">"30% Deposit 70% Before Shipment or Against B/L," Advanta Sourcing — <a href="https://www.advantasourcing.com/blog/30-deposit-70-before-shipment">advantasourcing.com</a></td></tr>
+<tr><td>3-way match (PO / goods receipt / invoice) blocking payment on mismatch</td>
+<td class="src">"How 3-Way Matching in SAP Works," Ramp — <a href="https://ramp.com/blog/sap-3-way-match">ramp.com</a></td></tr>
+<tr><td>Suez transit ~28-32 days; Cape diversion adds ~10-14 days, total 40-50 days</td>
+<td class="src">Port Economics, Management and Policy (routing options); Atlas Institute, "The Red Sea Shipping Crisis (2024-2025)" — <a href="https://atlasinstitute.org/the-red-sea-shipping-crisis-2024-2025-houthi-attacks-and-global-trade-disruption/">atlasinstitute.org</a></td></tr>
+<tr><td>Blank sailings announced 2-6 weeks ahead; a roll costs a minimum ~1 week</td>
+<td class="src">Shipping and Freight Resource, "How carriers manage and use blank sailings" — <a href="https://www.shippingandfreightresource.com/how-carriers-manage-and-use-blank-sailings/">shippingandfreightresource.com</a></td></tr>
+<tr><td>Free-time-then-tiered demurrage/detention at a European port</td>
+<td class="src">Port of Rotterdam inland container shipping guidelines (2021) — directional only, exact tariff is a Kestrel choice; see §7</td></tr>
+<tr><td>OTIF as the standard delivery-performance metric; supplier scorecards combining OTIF/lead-time/quality</td>
+<td class="src">Procurement-operations research note §3, multiple SCOR/practitioner sources</td></tr>
+<tr><td>Chinese New Year holiday dates and capacity ramp-down/recovery pattern</td>
+<td class="src">General Office of the State Council notice (15-23 Feb 2026 public holiday) — <a href="https://en.bjhd.gov.cn/workinginhaidian/supportingservices/publicholidays/202512/t20251211_4797062.shtml">en.bjhd.gov.cn</a>; the ramp-down/recovery window itself is an industry-assumption calibration, not in the official notice</td></tr>
+<tr><td>May-to-May ocean freight contract season</td>
+<td class="src">FreightRight, "Ocean Freight Contract Season" — <a href="https://www.freightright.com/news/ocean-freight-rates-2024">freightright.com</a></td></tr>
+<tr><td>AQL-indexed incoming sampling (inspection levels I/II/III)</td>
+<td class="src">ISO 2859-1:2026 exists and defines attribute sampling by AQL, but its exact sample-size/acceptance tables are paywalled — the specific 5,000→200 worked figure used here is a secondary-sourced, unverified implementation choice; see evidence audit</td></tr>
+</table>
+
+<h2>7. Fictional parameters (a Kestrel choice, not a real company's number)</h2>
+<div class="box fictional">
+<p>Per the project's own evidence-audit ruling
+(<a href="research/2026-09-15-evidence-audit.md">docs/research/2026-09-15-evidence-audit.md</a>):</p>
+<ul class="compact">
+<li><strong>Customer penalty rates and bases</strong> — <code>C-BIGBOX</code>'s 3%-of-order-value
+late/short penalty and <code>C-MARKET</code>'s tiered penalty are Kestrel-invented contract
+terms. They are inspired by real retailer OTIF/ASN compliance programs (Walmart, Amazon) but
+do <strong>not</strong> reproduce either company's actual published rate or basis — the
+research note itself flags this as "misapplied" if read as a faithful reproduction.</li>
+<li><strong>Tax</strong> — a flat duty/VAT treatment is a simplifying choice; TARIC
+classification is per-product, origin-dependent, and updated daily in reality (§ evidence
+audit, "0% EU duty" finding).</li>
+<li><strong>Demurrage tiers</strong> — the free-time-then-tiered-euro-per-day schedule is a
+scenario choice built from directional Rotterdam/industry ranges, not a published carrier
+tariff.</li>
+<li><strong>Reliability probabilities</strong> — e.g. the baseline ocean on-time probability,
+supplier-recovery-after-CNY-disruption probability, and container-roll probabilities are
+calibration choices built from broader industry statistics (global schedule-reliability
+indices, qualitative worker-turnover commentary), not route- or supplier-specific measured
+rates.</li>
+<li><strong>Sampling approximations</strong> — the AQL-to-sample-size mapping used for
+incoming inspection is a secondary-sourced approximation of ISO 2859-1, not the verified
+primary table.</li>
+</ul>
+</div>
+
+<h2>8. What the simulator excludes</h2>
+<div class="box exclude">
+<ul class="compact">
+<li>No real company, brand, supplier, or customer — every entity in §1 is invented.</li>
+<li>No true product-specific tariff/HS classification, currency conversion, or multi-currency
+accounting — one currency (EUR), one simplified duty treatment.</li>
+<li>No warehouse labor, equipment, or physical layout constraints — DC capacity is not
+separately modelled beyond stock levels and the inbound queue.</li>
+<li>No real carrier names, specific vessel schedules, or actual contract rates — freight
+cost is a parametric function of mode/route/season (<code>kestrel/network.py::LEGS</code>),
+not a live rate feed.</li>
+<li>No true geographic routing — the network map in the operations desk (and this brief) is
+schematic, not a projection.</li>
+<li>No insurance, legal, regulatory-compliance, or HR/staffing modelling.</li>
+<li>No hidden-state leakage to either player: true supplier health, exact freight-rate
+regime, port congestion queue depth, and other random-number internals are engine-only
+(<code>kestrel/screens.py::HIDDEN</code>) and never appear in a screen, a frame, or this
+artifact's embedded data — only their downstream, already-public effects do (confirmed
+quantities, ship-day slips, lot outcomes, invoice mismatches, booking rolls, demurrage,
+scorecards).</li>
+</ul>
+</div>
+
+<footer>
+Generated from <code>runs/red_sea/rule/run.json</code>, <code>kestrel/network.py</code>,
+<code>kestrel/records.py</code>, and <code>docs/research/*.md</code>. See
+<a href="artifact-schema.md">docs/artifact-schema.md</a> for how the accompanying
+<code>artifacts/kestrel-demo.html</code> replay was built, and the Task 21 report at
+<code>.superpowers/sdd/2026-09-15-kestrel-world/task-21-report.md</code> for the full
+evidence chain behind every claim above.
+</footer>

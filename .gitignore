@@ -1,0 +1,8 @@
+# local
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+
+# raw run data (hundreds of MB); the demo embeds the frames and transcripts/ keeps the model dialogue
+runs/
