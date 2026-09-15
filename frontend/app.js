@@ -2,6 +2,35 @@
 // render(frame) is the single render path for both live and replay data --
 // both feed it the same {day,date,screens_after,actions,note,status,error} frame shape.
 
+const TYPE_NAMES = { po: "purchase order", order: "customer order", booking: "container booking",
+  work_order: "work order", transfer: "warehouse transfer", invoice_in: "supplier invoice",
+  invoice_out: "customer invoice", chargeback: "chargeback", credit_note: "credit note",
+  lot: "inspection lot", ret: "return", asn: "shipping notice", receipt: "goods receipt",
+  qualification: "supplier qualification", audit: "supplier audit", contract: "freight contract" };
+const STATE_PHRASES = {
+  po: { draft: "were drafted", in_production: "went into production at the supplier", shipped: "left the supplier", received: "arrived at the plant",
+        inspected: "passed incoming inspection", invoiced: "were invoiced", matched: "matched order and receipt", paid: "were paid",
+        cancelled: "were cancelled", short_closed: "closed short", confirmed: "were confirmed" },
+  order: { received: "came in from customers", allocated: "had stock reserved", shipped: "shipped to customers",
+           delivered: "were delivered", declined: "were declined" },
+  booking: { booked: "were booked", cut_off: "reached the port cut-off", loaded: "were loaded", at_sea: "sailed",
+             arrived: "arrived in Rotterdam", customs: "entered customs", cleared: "cleared customs",
+             delivered: "were delivered to the Rotterdam warehouse", rolled: "were rolled to a later sailing",
+             blanked: "lost their sailing (blank sailing)", cancelled: "were cancelled" },
+  work_order: { planned: "were planned", released: "were released to the plant", running: "started on the line", complete: "finished", cancelled: "were cancelled" },
+  transfer: { created: "were created", in_transit: "left the warehouse", delivered: "arrived at the regional warehouse" },
+  invoice_in: { open: "arrived from suppliers", blocked: "were blocked for not matching the order", disputed: "were disputed",
+                accepted: "were accepted", paid: "were paid" },
+  invoice_out: { open: "were raised to customers", paid: "were paid by customers" },
+  chargeback: { open: "were raised by customers for late or short delivery", paid: "were settled" },
+  lot: { sampling: "went to sampling", accepted: "were accepted", rejected: "were rejected", sorted: "were sorted", returned: "were returned" },
+  credit_note: { open: "were issued by suppliers", paid: "were settled" },
+  asn: { sent: "were sent by suppliers" }, receipt: { received: "were booked in" },
+  contract: { active: "took effect", expired: "expired" },
+  qualification: { pending: "started", done: "completed" }, audit: { pending: "were requested", done: "came back" },
+  ret: { in_transit: "started back from customers", restocked: "were put back in stock", written_off: "were written off" },
+};
+
 // -- static network config, mirrored from kestrel/network.py (never changes at runtime) --
 const SUPPLIER_IDS = ["S-BAT", "S-SOC", "S-BRK", "S-DRV", "S-CASE"];
 const COMPONENT_IDS = ["BAT", "SOC", "DRV", "CASE", "CHG", "PKG"];
@@ -278,6 +307,7 @@ function render() {
   renderNews(screens);
   renderRecords(screens);
   renderNote(frame);
+  renderToday(frame);
   setControlsDisabled(false);
 }
 
@@ -725,3 +755,73 @@ function init() {
 }
 
 init();
+
+// -- "What happened today": a plain-language account of one day ---------------
+function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
+function actionSentence(a) {
+  const x = a.action, ok = a.result.ok, id = a.result.id ? ` (${a.result.id})` : "";
+  const lines = (o) => Object.entries(o || {}).map(([k, v]) => `${Number(v).toLocaleString()} ${k}`).join(", ");
+  const what = {
+    release_work_order: () => `released a work order for ${Number(x.qty).toLocaleString()} ${x.sku}`,
+    cancel_work_order: () => `cancelled work order ${x.id}`,
+    create_po: () => `ordered ${Number(x.qty).toLocaleString()} ${x.component} from ${x.supplier}`,
+    cancel_po: () => `cancelled purchase order ${x.id}`,
+    expedite_po: () => `asked to expedite purchase order ${x.id}`,
+    book_container: () => `booked ${x.containers || 1} container(s) ${x.mode ? "by " + x.mode : ""}${x.route ? " via " + x.route : ""} carrying ${lines(x.lines)}`,
+    cancel_booking: () => `cancelled booking ${x.id}`,
+    sign_freight_contract: () => `signed a freight contract for ${x.containers_per_month} containers a month`,
+    create_transfer: () => `moved ${lines(x.lines)} from ${x.src} to ${x.dst}`,
+    accept_invoice: () => `accepted invoice ${x.id}`,
+    dispute_invoice: () => `disputed invoice ${x.id}`,
+    set_inspection_level: () => `set incoming inspection to level ${x.level}`,
+    qualify_supplier: () => `started qualifying ${x.supplier}`,
+    request_audit: () => `requested an audit of ${x.supplier}`,
+    return_lot: () => `returned lot ${x.id}`,
+    allocate_order: () => `hand-allocated ${x.qty} units to order ${x.id}`,
+    decline_order: () => `declined order ${x.id}`,
+    set_allocation_policy: () => `set allocation to ${x.mode}${x.order ? " (" + x.order.join(" > ") + ")" : ""}`,
+    markdown: () => `marked ${x.sku} down by ${Math.round((x.pct || x.fraction || 0) * 100)}%`,
+  }[x.type];
+  const text = what ? what() : `did ${x.type}`;
+  return ok ? `${text}${id}.` : `tried to ${text}, but it was refused: ${a.result.reason}.`;
+}
+function transitionsToday(frame) {
+  const day = frame.day, seen = new Set(), groups = {};
+  const pool = state.records && Object.keys(state.records).length
+    ? Object.values(state.records)
+    : Object.values(frame.screens_after?.records || {}).flat();
+  for (const rec of pool) {
+    for (const [d, st, detail] of rec.history || []) {
+      if (d !== day || seen.has(rec.id + st)) continue;
+      seen.add(rec.id + st);
+      const key = rec.type + "|" + st;
+      (groups[key] ||= { type: rec.type, state: st, ids: [], detail }).ids.push(rec.id);
+    }
+  }
+  return Object.values(groups).map((g) => {
+    const name = TYPE_NAMES[g.type] || g.type;
+    let phrase = (STATE_PHRASES[g.type] || {})[g.state] || `moved to "${g.state.replace(/_/g, " ")}"`;
+    if (g.ids.length === 1) phrase = phrase.replace(/^were /, "was ");
+    const ids = g.ids.length <= 3 ? ` (${g.ids.join(", ")})` : "";
+    return `${plural(g.ids.length, name)} ${phrase}${ids}.`;
+  });
+}
+function renderToday(frame) {
+  const box = $("today-box");
+  if (!frame) { box.innerHTML = "No day loaded yet."; return; }
+  const who = state.mode === "live" ? "You" : (state.player === "luna" ? `The model (${state.model || "luna"})` : "The rule planner");
+  const acts = (frame.actions || []).map(actionSentence);
+  const world = transitionsToday(frame);
+  const log = frame.report?.log || [];
+  const news = (frame.report?.news || []).map((n) => `News: ${n.title}.`);
+  const exc = (frame.report?.new_exceptions || []).map((e) => `Exception: ${e.text}.`);
+  const before = frame.screens_before?.finance?.cash, after = frame.screens_after?.finance?.cash;
+  const cash = after == null ? "" : `Cash ended the day at ${fmtMoney(after)}` +
+    (before == null ? "." : ` (${after - before >= 0 ? "+" : "−"}${fmtMoney(Math.abs(after - before))} today).`);
+  const section = (title, items, empty) =>
+    `<div class="today-col"><div class="sub">${title}</div>${items.length ? `<ul>${items.map((t) => `<li>${t}</li>`).join("")}</ul>` : `<div class="muted">${empty}</div>`}</div>`;
+  box.innerHTML =
+    section(`${who} did`, acts, "Nothing. No actions were taken this day.") +
+    section("Meanwhile in the world", [...news, ...exc, ...log, ...world], "A quiet day: no documents changed state.") +
+    (cash ? `<div class="today-cash">${cash}</div>` : "");
+}
